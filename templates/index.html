@@ -5,9 +5,65 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video Streaming with Flask</title>
+    <link rel='stylesheet' href='https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css' />
+    <link rel='stylesheet' href='https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css' />
+    <link rel='stylesheet' href='https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css' />
+    <link href='https://unpkg.com/video.js/dist/video-js.css' rel='stylesheet' />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/video.js/7.21.1/video.min.js"></script>
+    <script src="https://unpkg.com/browse/@videojs/http-streaming@2.6.0/dist/videojs-http-streaming.min.js" ></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 </head>
+<style type="text/css">
+    div.col {
+        padding: 0px;
+    }
+    div.col-4 {
+        padding: 0px;
+    }
+    div.col-8 {
+        padding: 0px;
+    }
+    img {
+        padding: 0px;
+        width: 80px;
+        aspect-ratio: 1/1;
+        object-fit: cover;
+    }
+</style>
+
 <body>
-    <h1>Video Streaming with Flask</h1>
-    <img src="{{ url_for('video') }}" width="640" height="480">
+    <div class="container-fluid">
+        <div class="row">
+            <div class="col-4">
+                <div class="embed-responsive embed-responsive-16by9")>
+                    <img class="embed-responsive-item" src="{{ url_for('video') }}" width="854px" height="480px">
+                </div>
+            </div>
+            <div class="col-8" id="video-frame">
+
+            </div>
+
+        </div>
+
+    </div>
+    <script>
+        var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+        socket.on('actualizacion', function (data) {
+            console.log('Actualización recibida:', data);
+            var imgElement = document.createElement('img');
+            document.getElementById('video-frame').appendChild(imgElement);
+            fetch('/getface/' + data.nombre)
+                .then(response => response.blob())
+                .then(blob => {
+                    // Crear una URL de objeto para el blob y asignarla como fuente de la imagen
+                    var imageUrl = URL.createObjectURL(blob);
+                    imgElement.src = imageUrl;
+                })
+                .catch(error => console.error('Error al obtener la imagen:', error));
+        });
+        // Aquí puedes realizar acciones en la interfaz de usuario, como actualizar un contador, mostrar una notificación, etc.
+    </script>
+
 </body>
 </html>

@@ -1,15 +1,21 @@
 from flask import Flask, render_template, Response
+from flask import send_file
+from flask_socketio import SocketIO
+import time
 import cv2
 import face_recognition
 import numpy as np
 import os
 import hashlib
 
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
 app = Flask(__name__)
+socketio = SocketIO(app)
 
 capturas_dir = 'capturas'
 os.makedirs(capturas_dir, exist_ok=True)
+
 
 def guardar_captura(face_id, frame, location):
     nombre_archivo = f'captura_face_{face_id}.png'
@@ -24,18 +30,17 @@ def guardar_captura(face_id, frame, location):
     return face_id
 
 def cargar_imagenes_entrenamiento():
-    print("cargar_inagenes")
+    print('Cargarndo inagenes')
     imagenes_entrenamiento = []
     etiquetas_entrenamiento = []
 
     for etiqueta in os.listdir(capturas_dir):
-        name = etiqueta.split(".")[0]
         imagen_path = os.path.join(capturas_dir, etiqueta)
         try:
             imagen = face_recognition.load_image_file(imagen_path)
             encoding = face_recognition.face_encodings(imagen)[0]
             imagenes_entrenamiento.append(encoding)
-            etiquetas_entrenamiento.append(name)
+            etiquetas_entrenamiento.append(etiqueta)
         except Exception as e:
             print(str(e))
 
@@ -43,6 +48,7 @@ def cargar_imagenes_entrenamiento():
 
 def entrenar_modelo():
     imagenes_entrenamiento, etiquetas_entrenamiento = cargar_imagenes_entrenamiento()
+    print('imagenes_entrenamiento', len(imagenes_entrenamiento))
     return imagenes_entrenamiento, etiquetas_entrenamiento
 
 def reconocer_rostro(frame, modelo, etiquetas):
@@ -61,6 +67,7 @@ def reconocer_rostro(frame, modelo, etiquetas):
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         face_id = f"{top}{right}{bottom}{left}"
         matches = face_recognition.compare_faces(modelo, face_encoding)
+        print(matches)
         nombre = "Desconocido"
 
         if True in matches:
@@ -68,8 +75,10 @@ def reconocer_rostro(frame, modelo, etiquetas):
             nombre = f"{etiquetas[first_match_index]}"
         else:
             name = f"{nombre}_{face_id}"
+            capface = f"captura_face_{name}.png"
             location = (top, right, bottom, left)
-            #guardar_captura(name, frame, location)
+            guardar_captura(name, frame, location)
+            socketio.emit('actualizacion', {'nombre': capface})
 
         if nombre not in face_appeared:
             face_appeared[nombre] = 1
@@ -81,6 +90,18 @@ def reconocer_rostro(frame, modelo, etiquetas):
     
     return face_appeared
     
+def face_detector(frame):
+    face_locations = face_recognition.face_locations(frame)
+    for face_location in face_locations:
+        top, right, bottom, left = face_location
+        nombre = "Desconocido"
+        face_id = f"{top}{right}{bottom}{left}"
+        name = f"{nombre}_{face_id}"
+        capface = f"captura_face_{name}.png"
+        cv2.rectangle(frame, (left, top), (right, bottom), (1, 254, 4), 2)
+        guardar_captura(name, frame, face_location)
+        socketio.emit('actualizacion', {'nombre': capface})
+
 
 def generate_frames(modelo, etiquetas):
     while True:
@@ -89,7 +110,7 @@ def generate_frames(modelo, etiquetas):
         if ret:
             #print(modelo, etiquetas)
             reconocer_rostro(frame, modelo, etiquetas)
-            
+            #face_detector(frame)
             ret, buffer = cv2.imencode('.jpg', frame)
             if not ret:
                 break
@@ -98,6 +119,14 @@ def generate_frames(modelo, etiquetas):
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
 
+
+@socketio.on('connect')
+def handle_connect():
+    print('Cliente conectado')
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    print('Cliente desconectado')
 
 # Ruta para la página principal
 @app.route('/')
@@ -109,8 +138,22 @@ def index():
 def video():
     return Response(generate_frames(modelo, etiquetas), mimetype='multipart/x-mixed-replace; boundary=frame')
 
+@app.route('/getface/<filename>')
+def get_face(filename):
+    # Construir la ruta completa del archivo en el directorio de capturas
+    ruta_captura = os.path.join(capturas_dir, f'{filename}')
+
+    # Verificar si el archivo existe
+    if os.path.isfile(ruta_captura):
+        return send_file(ruta_captura, mimetype='image/png', as_attachment=True)
+    else:
+        return "Archivo no encontrado", 404
+
+
 if __name__ == '__main__':
     face_appeared = {}
     modelo, etiquetas = entrenar_modelo()
-    cap = cv2.VideoCapture(0)
-    app.run(host='0.0.0.0', port=8080)
+    cap = cv2.VideoCapture(3)
+    #app.run(host='0.0.0.0', port=8080)
+    socketio.run(app, host='0.0.0.0', port=8080)
+
