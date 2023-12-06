@@ -25,8 +25,8 @@
     }
     img {
         padding: 0px;
-        width: 80px;
-        aspect-ratio: 1/1;
+        width: 88px;
+        aspect-ratio: 2/2;
         object-fit: cover;
     }
 </style>
@@ -34,16 +34,16 @@
 <body>
     <div class="container-fluid">
         <div class="row">
-            <div class="col-4">
-                <div class="embed-responsive embed-responsive-16by9")>
+            <div class="col-12">
+                <div class="embed-responsive embed-responsive-16by9" )>
                     <img class="embed-responsive-item" src="{{ url_for('video') }}" width="854px" height="480px">
                 </div>
             </div>
-            <div class="col-8" id="video-frame">
-
-            </div>
-
         </div>
+        <div class="row">
+            <div class="col-12" id="video-frame"></div>
+        </div>
+    </div>
 
     </div>
     <script>

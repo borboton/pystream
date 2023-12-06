@@ -14,7 +14,10 @@ app = Flask(__name__)
 socketio = SocketIO(app)
 
 capturas_dir = 'capturas'
+imagenes_entrenamiento_dir = 'entrenamiento'
+
 os.makedirs(capturas_dir, exist_ok=True)
+os.makedirs(imagenes_entrenamiento_dir, exist_ok=True)
 
 
 def guardar_captura(face_id, frame, location):
@@ -35,9 +38,11 @@ def cargar_imagenes_entrenamiento():
     etiquetas_entrenamiento = []
 
     for etiqueta in os.listdir(capturas_dir):
+     
         imagen_path = os.path.join(capturas_dir, etiqueta)
         try:
             imagen = face_recognition.load_image_file(imagen_path)
+            #print(type(imagen))
             encoding = face_recognition.face_encodings(imagen)[0]
             imagenes_entrenamiento.append(encoding)
             etiquetas_entrenamiento.append(etiqueta)
@@ -67,9 +72,8 @@ def reconocer_rostro(frame, modelo, etiquetas):
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         face_id = f"{top}{right}{bottom}{left}"
         matches = face_recognition.compare_faces(modelo, face_encoding)
-        print(matches)
         nombre = "Desconocido"
-
+        
         if True in matches:
             first_match_index = matches.index(True)
             nombre = f"{etiquetas[first_match_index]}"
@@ -79,6 +83,8 @@ def reconocer_rostro(frame, modelo, etiquetas):
             location = (top, right, bottom, left)
             guardar_captura(name, frame, location)
             socketio.emit('actualizacion', {'nombre': capface})
+            modelo.append(face_encodings[0])
+            etiquetas.append(capface)
 
         if nombre not in face_appeared:
             face_appeared[nombre] = 1
@@ -106,7 +112,6 @@ def face_detector(frame):
 def generate_frames(modelo, etiquetas):
     while True:
         ret, frame = cap.read()
-
         if ret:
             #print(modelo, etiquetas)
             reconocer_rostro(frame, modelo, etiquetas)
@@ -153,7 +158,7 @@ def get_face(filename):
 if __name__ == '__main__':
     face_appeared = {}
     modelo, etiquetas = entrenar_modelo()
-    cap = cv2.VideoCapture(3)
+    cap = cv2.VideoCapture(2)
     #app.run(host='0.0.0.0', port=8080)
     socketio.run(app, host='0.0.0.0', port=8080)
 
