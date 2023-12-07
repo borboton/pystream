@@ -1,6 +1,6 @@
 from flask import Flask, render_template, Response
-from flask import send_file
-from flask_socketio import SocketIO
+from flask import send_file, request
+from flask_socketio import SocketIO, join_room
 import time
 import cv2
 import face_recognition
@@ -21,7 +21,7 @@ os.makedirs(imagenes_entrenamiento_dir, exist_ok=True)
 
 
 def guardar_captura(face_id, frame, location):
-    nombre_archivo = f'captura_face_{face_id}.png'
+    nombre_archivo = f'{face_id}'
     ruta_captura = os.path.join(capturas_dir, nombre_archivo)
     #print("type:", type(frame))
     top, right, bottom, left = location
@@ -72,16 +72,15 @@ def reconocer_rostro(frame, modelo, etiquetas):
     for (top, right, bottom, left), face_encoding in zip(face_locations, face_encodings):
         face_id = f"{top}{right}{bottom}{left}"
         matches = face_recognition.compare_faces(modelo, face_encoding)
-        nombre = "Desconocido"
+        nombre = "Unknown"
         
         if True in matches:
             first_match_index = matches.index(True)
             nombre = f"{etiquetas[first_match_index]}"
         else:
-            name = f"{nombre}_{face_id}"
-            capface = f"captura_face_{name}.png"
+            capface = f"Recognized-{face_id}.png"
             location = (top, right, bottom, left)
-            guardar_captura(name, frame, location)
+            guardar_captura(capface, frame, location)
             socketio.emit('actualizacion', {'nombre': capface})
             modelo.append(face_encodings[0])
             etiquetas.append(capface)
@@ -92,7 +91,7 @@ def reconocer_rostro(frame, modelo, etiquetas):
             face_appeared[nombre] += 1
 
         cv2.rectangle(frame, (left, top), (right, bottom), (1, 254, 4), 2)
-        cv2.putText(frame, nombre, (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (1, 254, 4), 2)
+        cv2.putText(frame, "Recognized", (left, top-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (1, 254, 4), 2)
     
     return face_appeared
     
@@ -128,6 +127,9 @@ def generate_frames(modelo, etiquetas):
 @socketio.on('connect')
 def handle_connect():
     print('Cliente conectado')
+    print(request.sid)
+    image_files = [f for f in os.listdir(capturas_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
+    socketio.emit('image_list', {'images': image_files}, room=request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -158,7 +160,7 @@ def get_face(filename):
 if __name__ == '__main__':
     face_appeared = {}
     modelo, etiquetas = entrenar_modelo()
-    cap = cv2.VideoCapture(2)
+    cap = cv2.VideoCapture(0)
     #app.run(host='0.0.0.0', port=8080)
     socketio.run(app, host='0.0.0.0', port=8080)
 

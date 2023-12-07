@@ -49,7 +49,24 @@
 	</div>
     </div>
     <script>
+
         var socket = io.connect('http://' + document.domain + ':' + location.port);
+
+	socket.on('image_list', function (data) {
+    	    console.log('Lista de imágenes recibida:', data.images);
+	    data.images.forEach(function (imageName) {
+                var imgElement = document.createElement('img');
+	        imgElement.className = "rounded"
+                document.getElementById('video-frame').appendChild(imgElement);
+                fetch('/getface/' + imageName)
+                    .then(response => response.blob())
+                    .then(blob => {
+                        var imageUrl = URL.createObjectURL(blob);
+                        imgElement.src = imageUrl;
+                     })
+                .catch(error => console.error('Error al obtener la imagen:', error));
+            });
+	});
 
         socket.on('actualizacion', function (data) {
             console.log('Actualización recibida:', data);
