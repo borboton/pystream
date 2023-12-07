@@ -24,9 +24,9 @@
         padding: 0px;
     }
     img {
-        padding: 0px;
-        width: 88px;
-        aspect-ratio: 2/2;
+        padding: 1px;
+        width: 10%;
+        aspect-ratio: 1/1;
         object-fit: cover;
     }
 </style>
@@ -39,12 +39,14 @@
                     <img class="embed-responsive-item" src="{{ url_for('video') }}" width="854px" height="480px">
                 </div>
             </div>
-        </div>
-        <div class="row">
-            <div class="col-12" id="video-frame"></div>
-        </div>
-    </div>
-
+	</div>
+	<div class="row">
+		<div class="col-12">
+			<div class="embed-responsive" id="video-frame">
+			</div>
+		
+	     </div>
+	</div>
     </div>
     <script>
         var socket = io.connect('http://' + document.domain + ':' + location.port);
@@ -52,17 +54,16 @@
         socket.on('actualizacion', function (data) {
             console.log('Actualización recibida:', data);
             var imgElement = document.createElement('img');
+	    imgElement.className = "rounded"
             document.getElementById('video-frame').appendChild(imgElement);
             fetch('/getface/' + data.nombre)
                 .then(response => response.blob())
                 .then(blob => {
-                    // Crear una URL de objeto para el blob y asignarla como fuente de la imagen
                     var imageUrl = URL.createObjectURL(blob);
                     imgElement.src = imageUrl;
                 })
                 .catch(error => console.error('Error al obtener la imagen:', error));
         });
-        // Aquí puedes realizar acciones en la interfaz de usuario, como actualizar un contador, mostrar una notificación, etc.
     </script>
 
 </body>
