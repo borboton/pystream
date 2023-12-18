@@ -29,31 +29,56 @@
         aspect-ratio: 1/1;
         object-fit: cover;
     }
+    img:hover{
+	transform: scale(2.0);
+    }
+
 </style>
 
 <body>
     <div class="container-fluid">
+	<div class="row">
+		<div class="col-12"  style="overflow-y: auto; max-height: 200px;">
+			<div class="embed-responsive" id="video-frame"></div>
+	        </div>
+	</div>
         <div class="row">
-            <div class="col-12">
+	<div class="col-12">
                 <div class="embed-responsive embed-responsive-16by9" )>
-                    <img class="embed-responsive-item" src="{{ url_for('video') }}" width="854px" height="480px">
+			<img class="embed-responsive-item" src="{{ url_for('video') }}" width="854px" height="480px">
                 </div>
             </div>
-	</div>
-	<div class="row">
-		<div class="col-12">
-			<div class="embed-responsive" id="video-frame">
-			</div>
-		
-	     </div>
 	</div>
     </div>
     <script>
 
         var socket = io.connect('http://' + document.domain + ':' + location.port);
+        socket.on('image_list', function (data) {
+        console.log('Lista de imágenes recibida:', data.images);
+        var batchSize = 30;
+        var currentIndex = 0;
+        var imagesToLoad = data.images.slice(currentIndex, currentIndex + batchSize);
 
+        imagesToLoad.forEach(function (imageName) {
+            var imgElement = document.createElement('img');
+            imgElement.className = "rounded";
+            document.getElementById('video-frame').appendChild(imgElement);
+
+            fetch('/getface/' + imageName)
+                .then(response => response.blob())
+                .then(blob => {
+                    var imageUrl = URL.createObjectURL(blob);
+                    imgElement.src = imageUrl;
+                })
+                .catch(error => console.error('Error al obtener la imagen:', error));
+         
+	     currentIndex += batchSize;
+       	 });
+        });
+ 	/*
 	socket.on('image_list', function (data) {
     	    console.log('Lista de imágenes recibida:', data.images);
+	
 	    data.images.forEach(function (imageName) {
                 var imgElement = document.createElement('img');
 	        imgElement.className = "rounded"
@@ -67,6 +92,7 @@
                 .catch(error => console.error('Error al obtener la imagen:', error));
             });
 	});
+	*/
 
         socket.on('actualizacion', function (data) {
             console.log('Actualización recibida:', data);
@@ -81,6 +107,7 @@
                 })
                 .catch(error => console.error('Error al obtener la imagen:', error));
         });
+
     </script>
 
 </body>

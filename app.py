@@ -3,12 +3,25 @@ from flask import send_file, request
 from flask_socketio import SocketIO, join_room
 import time
 import cv2
-import face_recognition
+#import face_recognition
 import numpy as np
 import os
+import glob
 import hashlib
+import logging
 
-face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+
+#default = cv2.HOGDescriptor()
+#default.setSVMDetector(cv2.HOGDescriptor_getDefaultPeopleDetector())
+
+#default = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_car.xml')
+default = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_fullbody.xml')
+#default = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_alt_tree.xml')
+#default = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+
+#default = cv2.HOGDescriptor()
+
 
 app = Flask(__name__)
 socketio = SocketIO(app)
@@ -22,27 +35,24 @@ os.makedirs(imagenes_entrenamiento_dir, exist_ok=True)
 
 def guardar_captura(face_id, frame, location):
     nombre_archivo = f'{face_id}'
-    ruta_captura = os.path.join(capturas_dir, nombre_archivo)
-    #print("type:", type(frame))
+    ruta_captura = os.path.join(capturas_dir, nombre_archivo)    
     top, right, bottom, left = location
-    # Recortar la región de la cara de la imagen
     cara_recortada = frame[top:bottom, left:right]
     cv2.imwrite(ruta_captura, cara_recortada)
 
-    print(f'Captura guardada: {ruta_captura}')
+    logging.info("Captura guardada: %s", ruta_captura)
     return face_id
 
 def cargar_imagenes_entrenamiento():
-    print('Cargarndo inagenes')
+    logging.debug("Cargarndo inagenes")
     imagenes_entrenamiento = []
     etiquetas_entrenamiento = []
 
-    for etiqueta in os.listdir(capturas_dir):
+    for etiqueta in os.listdir(imagenes_entrenamiento_dir):
      
-        imagen_path = os.path.join(capturas_dir, etiqueta)
+        imagen_path = os.path.join(imagenes_entrenamiento_dir, etiqueta)
         try:
             imagen = face_recognition.load_image_file(imagen_path)
-            #print(type(imagen))
             encoding = face_recognition.face_encodings(imagen)[0]
             imagenes_entrenamiento.append(encoding)
             etiquetas_entrenamiento.append(etiqueta)
@@ -53,7 +63,7 @@ def cargar_imagenes_entrenamiento():
 
 def entrenar_modelo():
     imagenes_entrenamiento, etiquetas_entrenamiento = cargar_imagenes_entrenamiento()
-    print('imagenes_entrenamiento', len(imagenes_entrenamiento))
+    logging.info("Imagenes_entrenamiento: %d", len(imagenes_entrenamiento))
     return imagenes_entrenamiento, etiquetas_entrenamiento
 
 def reconocer_rostro(frame, modelo, etiquetas):
@@ -82,7 +92,7 @@ def reconocer_rostro(frame, modelo, etiquetas):
             location = (top, right, bottom, left)
             guardar_captura(capface, frame, location)
             socketio.emit('actualizacion', {'nombre': capface})
-            modelo.append(face_encodings[0])
+            #modelo.append(face_encodings[0])
             etiquetas.append(capface)
 
         if nombre not in face_appeared:
@@ -95,6 +105,7 @@ def reconocer_rostro(frame, modelo, etiquetas):
     
     return face_appeared
     
+
 def face_detector(frame):
     face_locations = face_recognition.face_locations(frame)
     for face_location in face_locations:
@@ -108,59 +119,109 @@ def face_detector(frame):
         socketio.emit('actualizacion', {'nombre': capface})
 
 
-def generate_frames(modelo, etiquetas):
-    while True:
-        ret, frame = cap.read()
-        if ret:
-            #print(modelo, etiquetas)
-            reconocer_rostro(frame, modelo, etiquetas)
-            #face_detector(frame)
-            ret, buffer = cv2.imencode('.jpg', frame)
-            if not ret:
-                break
-
-            frame_bytes = buffer.tobytes()
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-
-
 @socketio.on('connect')
 def handle_connect():
-    print('Cliente conectado')
-    print(request.sid)
+    logging.debug("Cliente conectado: %s", request.sid)
     image_files = [f for f in os.listdir(capturas_dir) if f.endswith(('.png', '.jpg', '.jpeg'))]
-    socketio.emit('image_list', {'images': image_files}, room=request.sid)
+    #img = sorted(image_files, key=lambda x: (int(x[0].split("-")[0]) if x[1][:1].isdigit() else 999, x))
+    #files = list(filter(os.path.isfile, glob.glob(capturas_dir + "*")))
+    image_files.sort(key=lambda x: os.path.getmtime(f"./capturas/{x}"), reverse=True)
+    socketio.emit('image_list', { 'images': image_files }, room=request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    print('Cliente desconectado')
+    logging.info("Cliente desconectado: %s", request.sid)
 
-# Ruta para la página principal
 @app.route('/')
 def index():
     return render_template('index.html')
 
-# Ruta para la transmisión de video
 @app.route('/video')
 def video():
     return Response(generate_frames(modelo, etiquetas), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 @app.route('/getface/<filename>')
 def get_face(filename):
-    # Construir la ruta completa del archivo en el directorio de capturas
-    ruta_captura = os.path.join(capturas_dir, f'{filename}')
+    path = os.path.abspath(f"{capturas_dir}")
+    ruta_captura = os.path.join(path, f'{filename}')
 
-    # Verificar si el archivo existe
     if os.path.isfile(ruta_captura):
+        time.sleep(0.5)
         return send_file(ruta_captura, mimetype='image/png', as_attachment=True)
     else:
         return "Archivo no encontrado", 404
 
+def obj_detector(frame, modelo, etiquetas):
+    #rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    # face
+    #obj = default.detectMultiScale(rgb_frame, scaleFactor=1.1, minSize=(30, 30))
+
+    # body
+    #obj = default.detectMultiScale(rgb_frame, 
+                                   #scaleFactor=(1.1), 
+                                   #minNeighbors=5,
+                                   #minSize=(40,10))
+
+    obj = default.detectMultiScale(rgb_frame, 
+                                   scaleFactor=(2.05),
+                                   minNeighbors=4,
+                                   minSize=(40,40),
+                                   maxSize=(80,80))
+
+    # face
+    #obj = default.detectMultiScale(rgb_frame, 
+                                   #scaleFactor=(2.05),
+                                   #minNeighbors=4,
+                                   #minSize=(12,12),
+                                   #maxSize=(100,100))
+
+    for (left,top,right,bottom) in obj:
+        location  = ( top, right, bottom, left )
+        face_id = f"{top}{right}{bottom}{left}"
+        cv2.rectangle(frame, (left,top),(left+right,top+bottom),(0,0,255),1)
+        capface = f"Recognized-{face_id}.png"
+        socketio.emit('actualizacion', {'nombre': capface})
+        body_roi = frame[top:top+bottom, left:left+right]
+        filename = os.path.abspath(f"./capturas/{capface}")
+        cv2.imwrite(filename, body_roi)
+        logging.debug("imwrite: %s", filename)
+
+        if face_id not in face_appeared:
+            face_appeared[face_id] = 1
+        else:
+            face_appeared[face_id] += 1
+
+def generate_frames(modelo, etiquetas):
+    while True:
+        ret, frame = cap.read()
+        if ret:
+            #print(modelo, etiquetas)
+            #reconocer_rostro(frame, modelo, etiquetas)
+            #face_detector(frame)
+            obj_detector(frame, modelo, etiquetas)
+
+            ret, buffer = cv2.imencode('.jpg', frame)
+
+            if not ret:
+                break
+
+            frame_bytes = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+
 
 if __name__ == '__main__':
+    logging.basicConfig(format=('%(asctime)s | %(threadName)s - %(message)s'), level=logging.DEBUG)
+    log = logging.getLogger('werkzeug')
+    log.setLevel(logging.ERROR)
+    logging.info("Start..")
     face_appeared = {}
     modelo, etiquetas = entrenar_modelo()
     cap = cv2.VideoCapture(0)
+    cap.set(3, 640)
+    cap.set(4, 480)
     #app.run(host='0.0.0.0', port=8080)
-    socketio.run(app, host='0.0.0.0', port=8080)
+    socketio.run(app, host='0.0.0.0', port=8080, allow_unsafe_werkzeug=True)
 
